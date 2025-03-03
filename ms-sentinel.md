@@ -16,3 +16,22 @@ SecurityEvent
 
 </details>
 
+<details>
+
+<summary>Mass Deletion from Azure </summary>
+
+```kusto
+// MITRE : T1485
+
+let starttym = 10d;
+let endtym = 1d;
+let tymframe = 1h;
+let TotalEventsThreshold = 20;
+let TimeSeriesData = 
+AzureActivity
+| where TimeGenerated between (startofday(ago(starttime)) .. startofday(ago(endtime)))
+| where OperationNameValue endswith "delete"
+```
+
+</details>
+
