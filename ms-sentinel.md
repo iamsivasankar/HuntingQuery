@@ -50,3 +50,81 @@ AuditLogs
 
 </details>
 
+<details>
+
+<summary>Account Exempt from Conditional Access </summary>
+
+```kusto
+// Some code
+
+SigninLogs
+| where ConditionalAccessStatus != "success"
+| where AppDisplayName contains "azure" 
+     and AuthenticationContextClassReferences  !contains "previouslySatisfied"
+     and isontempty(AlternatesSignInName)
+     and crossTenantAccessType != "b2bcollaboration" and CrossTenantAccessType != "passthrough"
+     
+| project AlternatesSignInName
+| where status !contains "50140" and AuthenticationDetails contains "success"
+| distinct AlternateSignInName, userType, crossTenantAccessType, AppDisplayName
+  
+
+```
+
+</details>
+
+<details>
+
+<summary>Login to Break The Glass Rule </summary>
+
+```kusto
+// Some code
+
+SigninLogs
+| where userPrincipalName contains "az-ind-breakglass-gp-1" or userPrincipalName contains "az-in-breakglass-gp-2"
+| project Identity, userDisplayName, Location, LocationDetails, IPAddress, ClientAppUsed, ConditionalAccessStatus, DeviceDetail, RiskState
+```
+
+</details>
+
+<details>
+
+<summary>App Gateway WebApplication Firewall Path Traversal Attack </summary>
+
+```kusto
+// Some code
+
+let Threshold = 1; 
+AzureDiagnostics 
+| where ResourceProvider == "Microsoft.Network" and Category == "ApplicationGatewayFirewallLog"
+| where Message has "Path Traversal Attack"
+| project 
+   transactionId_g,
+   hostname_s,
+   requesUrl_s,
+   TimeGenerated,
+   clientIp_s,
+   Message,
+   details_message_s,
+   details_data_s
+| join kind = inner(
+   AzureDiagnostics
+   | where ResourceProvider == "Microsoft.Network" and Category == "ApplicationGatewayFirewallLog"
+   | where action_s == "Allowed")
+   on transactionId_g
+| extend uri = strcat(hostname_s, requesturi_s)
+| summarize
+  StartTime = min(TimeGenerated),
+  EndTime = max(TimeGenerated),
+  TransactionID = make_set(trabsactionId_g, 100),
+  Message = make_set(Message, 100),
+  Detail_Message = make_set(details_message_s,100),
+  Detail_Data = make_set(details_data_s, 100),
+  Total_TransactionId = dcount(transactionId_g)
+  by clientIp_s, uri, action_s
+| where Total_TransactionId >= Threshold
+| join kind=leftanti _getWatchlist("Whitelist_IP") on $left.clientIp_s == $right.IP
+```
+
+</details>
+
