@@ -35,3 +35,18 @@ AzureActivity
 
 </details>
 
+<details>
+
+<summary>Password Reset Successful SSPR </summary>
+
+```kusto
+// Some code
+
+set query_now = datetime(2025-03-21T03:37:32.566);
+AuditLogs
+| where operationName contains "self-service password reset flow activity" and ResultDescription contains "user successfully reset password"
+| project InitiatedBy.user.ipAddress
+```
+
+</details>
+
