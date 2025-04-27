@@ -50,7 +50,7 @@ the left
 
 <details>
 
-<summary>Identify strings in process command lines which match Base64 encoding format,<br>extract the string to a column called Base64,a nd decode it in a column called<br>DecodedString.</summary>
+<summary>Identify strings in process command lines which match Base64 encoding format,<br>extract the string to a column called Base64, and decode it in a column called<br>Decoded String.</summary>
 
 ```kusto
 // KQL
@@ -82,3 +82,131 @@ AccountDisplayName
 ```
 
 </details>
+
+<details>
+
+<summary>Pull SHA256 out of text file and look for Email attachments that matches the SHA256</summary>
+
+```kusto
+// KQL
+
+let abuse_sha256 = 
+(externaldata(sha256_hash: string )
+[@"https://bazaar.abuse.ch/export/txt/sha2
+56/recent/"]
+with (format="txt"))
+| where sha256_hash !startswith "#"
+| project sha256_hash;
+abuse_sha256
+| join (EmailAttachmentInfo 
+| where Timestamp > ago(1d) 
+) on $left.sha256_hash == $right.SHA256
+| project Timestamp,SenderFromAddress 
+,RecipientEmailAddress,FileName,FileType,S
+HA256, 
+MalwareFilterVerdict,MalwareDetectionMethod
+```
+
+</details>
+
+<details>
+
+<summary>Finds PowerShell execution events that could involve a download</summary>
+
+```kusto
+// KQL 
+
+union DeviceProcessEvents, DeviceNetworkEvents
+| where Timestamp > ago(7d)
+| where FileName in~ ("powershell.exe", "powershell_ise.exe")
+| where ProcessCommandLine has_any("WebClient",
+"DownloadFile",
+"DownloadData",
+"DownloadString",
+"WebRequest",
+"Shellcode",
+"http",
+"https")
+| project Timestamp, DeviceName, InitiatingProcessFileName, 
+InitiatingProcessCommandLine, 
+FileName, ProcessCommandLine, RemoteIP, RemoteUrl, RemotePort, RemoteIPType
+| top 100 by Timestamp 
+```
+
+</details>
+
+<details>
+
+<summary>Identity + Endpoint: Lookup processes that performed LDAP auth. with clear text passwords</summary>
+
+```kusto
+// KQL
+
+IdentityLogonEvents
+| where Timestamp > ago(7d)
+| where LogonType == "LDAP cleartext" and 
+isnotempty(AccountName)
+| project LogonTime = Timestamp, 
+DeviceName, AccountName, Application, 
+LogonType
+| join kind=inner (
+DeviceNetworkEvents
+| where Timestamp > ago(7d)
+| where ActionType == "ConnectionSuccess"
+| extend DeviceName = 
+toupper(trim(@"\..*$",DeviceName))
+| where RemotePort == "389"
+| project NetworkConnectionTime = 
+Timestamp, DeviceName, AccountName = 
+InitiatingProcessAccountName, 
+InitiatingProcessFileName, 
+InitiatingProcessCommandLine 
+) on DeviceName, AccountName
+| where LogonTime - NetworkConnectionTime 
+between (-2m .. 2m)
+| project Application, LogonType, 
+LogonTime, DeviceName, AccountName, 
+InitiatingProcessFileName, 
+InitiatingProcessCommandLine
+```
+
+</details>
+
+<details>
+
+<summary>Lookup for emails coming into the organization from an external source that was targeted to more than 50 distinct corporate users</summary>
+
+```kusto
+// KQL
+
+EmailEvents
+| where SenderFromDomain != 
+"corporatedomain.com"
+| summarize dcount(RecipientEmailAddress) 
+by SenderFromAddress, NetworkMessageId, 
+AttachmentCount, SendTime = Timestamp
+| where dcount_RecipientEmailAddress > 50
+
+
+```
+
+</details>
+
+<details>
+
+<summary>Lookup for all emails within last 7 days where the malware verdict was Malware</summary>
+
+```kusto
+// KQL 
+
+EmailEvents
+| where Timestamp > ago(7d)
+| where MalwareFilterVerdict == "Malware"
+| project Timestamp, 
+SenderMailFromAddress, 
+RecipientEmailAddress, 
+MalwareDetectionMethod, DeliveryAction 
+```
+
+</details>
+
